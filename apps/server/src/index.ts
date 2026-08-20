@@ -9,7 +9,9 @@ import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
 
-app.use(cors());
+const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:5173';
+
+app.use(cors({ origin: clientUrl }));
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);
