@@ -1,9 +1,10 @@
 import { Router, Request } from 'express';
 import { Types } from 'mongoose';
 import { Task, TaskStatus, TaskPriority } from '../models/Task';
+import { User } from '../models/User';
 import { AppError } from '../utils/AppError';
 import { asyncHandler } from '../utils/asyncHandler';
-import { AuthenticatedRequest } from '../middleware/auth';
+import { AuthenticatedRequest, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
@@ -35,19 +36,77 @@ const findOwnedTask = async (req: Request) => {
 };
 
 router.get(
+  '/all-users',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const users = await User.find().select('email role');
+
+    const usersWithTaskCounts = await Promise.all(
+      users.map(async (user) => ({
+        id: user._id,
+        email: user.email,
+        role: user.role,
+        taskCount: await Task.countDocuments({ user: user._id }),
+      }))
+    );
+
+    res.status(200).json({ users: usersWithTaskCounts });
+  })
+);
+
+router.get(
   '/analytics',
   asyncHandler(async (req, res) => {
     const userId = getUserId(req);
 
-    const [total, completed] = await Promise.all([
+    const [total, todo, inprogress, done, low, medium, high, noPriority] = await Promise.all([
       Task.countDocuments({ user: userId }),
+      Task.countDocuments({ user: userId, status: 'todo' }),
+      Task.countDocuments({ user: userId, status: 'inprogress' }),
       Task.countDocuments({ user: userId, status: 'done' }),
+      Task.countDocuments({ user: userId, priority: 'low' }),
+      Task.countDocuments({ user: userId, priority: 'medium' }),
+      Task.countDocuments({ user: userId, priority: 'high' }),
+      Task.countDocuments({ user: userId, priority: { $exists: false } }),
     ]);
 
+    const completed = done;
     const pending = total - completed;
     const completionPercentage = total === 0 ? 0 : Math.round((completed / total) * 100);
 
-    res.status(200).json({ total, completed, pending, completionPercentage });
+    const timedTasks = await Task.find({
+      user: userId,
+      status: 'done',
+      completedAt: { $ne: null },
+      dueDate: { $ne: null },
+    }).select('completedAt dueDate');
+
+    let onTimeCount = 0;
+    let lateCount = 0;
+    let totalDelayDays = 0;
+
+    for (const task of timedTasks) {
+      if (!task.completedAt || !task.dueDate) continue;
+      const delayDays = (task.completedAt.getTime() - task.dueDate.getTime()) / 86400000;
+      totalDelayDays += delayDays;
+      if (delayDays <= 0) onTimeCount++;
+      else lateCount++;
+    }
+
+    const averageDelayDays =
+      timedTasks.length === 0 ? 0 : Math.round((totalDelayDays / timedTasks.length) * 10) / 10;
+
+    res.status(200).json({
+      total,
+      completed,
+      pending,
+      completionPercentage,
+      byStatus: { todo, inprogress, done },
+      byPriority: { low, medium, high, none: noPriority },
+      onTimeCount,
+      lateCount,
+      averageDelayDays,
+    });
   })
 );
 
@@ -115,15 +174,22 @@ router.get(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    await findOwnedTask(req);
+    const existing = await findOwnedTask(req);
 
     const { title, description, status, priority, dueDate } = req.body ?? {};
     const updates: Record<string, unknown> = {};
     if (title !== undefined) updates.title = title;
     if (description !== undefined) updates.description = description;
-    if (status !== undefined) updates.status = status;
     if (priority !== undefined) updates.priority = priority;
     if (dueDate !== undefined) updates.dueDate = dueDate;
+    if (status !== undefined) {
+      updates.status = status;
+      if (status === 'done' && existing.status !== 'done') {
+        updates.completedAt = new Date();
+      } else if (status !== 'done' && existing.status === 'done') {
+        updates.completedAt = null;
+      }
+    }
 
     const updated = await Task.findByIdAndUpdate(req.params.id, updates, {
       new: true,
@@ -146,13 +212,14 @@ router.delete(
 router.patch(
   '/:id/complete',
   asyncHandler(async (req, res) => {
-    await findOwnedTask(req);
+    const existing = await findOwnedTask(req);
 
-    const updated = await Task.findByIdAndUpdate(
-      req.params.id,
-      { status: 'done' },
-      { new: true }
-    );
+    const updates: Record<string, unknown> = { status: 'done' };
+    if (existing.status !== 'done') {
+      updates.completedAt = new Date();
+    }
+
+    const updated = await Task.findByIdAndUpdate(req.params.id, updates, { new: true });
 
     res.status(200).json(updated);
   })
