@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, BASE_URL } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
 import { MagicCard } from '@/components/ui/magic-card'
 import { NumberTicker } from '@/components/ui/number-ticker'
@@ -65,8 +65,6 @@ interface PendingEdit {
   dueDate?: string
 }
 
-const TASKS_ENDPOINT = 'http://localhost:5001/api/tasks'
-
 const STATUS_CHART_COLORS = ['var(--color-chart-1)', 'var(--color-chart-2)', 'var(--color-chart-3)']
 const PRIORITY_CHART_COLOR = 'var(--color-chart-4)'
 
@@ -103,7 +101,7 @@ export default function Tasks() {
   const [priority, setPriority] = useState<TaskPriority | ''>('')
   const [dueDate, setDueDate] = useState('')
 
-  const source = useMemo(() => new ApiDataSource<Task>(TASKS_ENDPOINT), [])
+  const source = useMemo(() => new ApiDataSource<Task>(`${BASE_URL}/tasks`), [])
 
   const refreshAnalytics = async () => {
     const data = await apiFetch<Analytics>('/tasks/analytics')

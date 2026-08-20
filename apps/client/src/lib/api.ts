@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:5001/api'
+export const BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:5001/api'
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
