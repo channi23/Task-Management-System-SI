@@ -8,6 +8,8 @@ MERN task tracker. Auth, task CRUD, filtering and search, analytics, and a reusa
 
 * Frontend: https://task-management-system-si-client-19.vercel.app
 
+Note: the backend is on Render's free tier, which spins down after 15 minutes of no traffic. If nobody's used it in a while, the first signup or login can take 30-50 seconds while the server wakes back up. Retry if it times out, it'll be fast after that first request.
+
 ## Stack
 
 * Frontend: React 19, Vite, TypeScript, Tailwind
@@ -83,7 +85,7 @@ Everything under `/api/tasks` needs `Authorization: Bearer <token>`.
 
 ## Design decisions
 
-Few things worth explaining instead of just leaving you to guess why it's built this way.
+Few things worth explaining:
 
 **The datatable package is source-agnostic, and that's the whole point of building it separately.** It never fetches data itself. It takes a `DataSource` object with one method, `fetch(params)`, that returns `{ rows, totalRows }`, and the table only ever talks to that interface. It has no idea whether the data behind it is a plain array in memory or a live API call. Right now there are two implementations: `LocalDataSource` for static data, used while the table was being built before the backend even existed, and `ApiDataSource` for the real endpoint this app actually runs on. From the table's point of view they're interchangeable, swapping one for the other in `Tasks.tsx` was literally a one line change.
 
